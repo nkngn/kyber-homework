@@ -64,8 +64,8 @@ func (e OrderEdge) GetReverseEdge() Edge {
 	reverseEdge := OrderEdge{
 		BaseToken:  e.QuoteToken,
 		QuoteToken: e.BaseToken,
-		AskOrders:  make([]Order, len(e.BidOrders)),
-		BidOrders:  make([]Order, len(e.AskOrders)),
+		AskOrders:  make([]Order, 0, len(e.BidOrders)),
+		BidOrders:  make([]Order, 0, len(e.AskOrders)),
 	}
 
 	for _, order := range e.BidOrders {

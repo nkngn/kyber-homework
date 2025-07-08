@@ -47,7 +47,7 @@ func (g graph) Neighbors(token string) []Edge {
 
 func (g *graph) BestBidPrice(base, quote string, amount float64) (float64, []string, bool) {
 	distances, predecessors := g.bellmanFord(base, amount)
-	return distances[quote], GetPath(predecessors, base, quote), true
+	return distances[quote] / amount, GetPath(predecessors, base, quote), true
 }
 
 func (g *graph) bellmanFord(source string, amount float64) (map[string]float64, map[string]string) {
@@ -103,8 +103,8 @@ func GetPath(predecessors map[string]string, base, quote string) []string {
 }
 
 func (g graph) BestAskPrice(base, quote string, amount float64) (float64, []string, bool) {
-	minRequired, prev := g.uniCostSearch(base, quote, 1.0)
-	return minRequired[quote], GetPath(prev, quote, base), true
+	minRequired, prev := g.uniCostSearch(base, quote, amount)
+	return minRequired[quote] / amount, GetPath(prev, quote, base), true
 	// fmt.Println(GetPath(prev, quote, base))
 	// fmt.Printf("%.6f\n", minRequired[quote])
 }
