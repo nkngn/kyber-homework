@@ -19,14 +19,22 @@ func main() {
 	}
 
 	// find best ask price
-	bestAskPrice, bestAskRoute, _ := graph.BestAskPrice(base, quote, amount)
-	fmt.Println(strings.Join(bestAskRoute, "->"))
-	fmt.Printf("%.6f\n", bestAskPrice)
+	bestAskPrice, bestAskRoute, isFeasible := graph.BestAskPrice(base, quote, amount)
+	if isFeasible {
+		fmt.Println(strings.Join(bestAskRoute, "->"))
+		fmt.Printf("%.6f\n", bestAskPrice)
+	} else {
+		fmt.Printf("%s->%s ask route is not feasible\n", quote, base)
+	}
 
 	// find best bid price
-	bestBidPrice, bestBidRoute, _ := graph.BestBidPrice(base, quote, amount)
-	fmt.Println(strings.Join(bestBidRoute, "->"))
-	fmt.Printf("%.6f\n", bestBidPrice)
+	bestBidPrice, bestBidRoute, isFeasible := graph.BestBidPrice(base, quote, amount)
+	if isFeasible {
+		fmt.Println(strings.Join(bestBidRoute, "->"))
+		fmt.Printf("%.6f\n", bestBidPrice)
+	} else {
+		fmt.Printf("%s->%s bid route is not feasible\n", quote, base)
+	}
 }
 
 func ReadExpandedInput(filePath string) (string, string, float64, route.Graph, error) {

@@ -15,8 +15,14 @@ type OrderEdge struct {
 func (e OrderEdge) From() string { return e.BaseToken }
 func (e OrderEdge) To() string   { return e.QuoteToken }
 
-// Bán một lượng `amount` base token, trả về lượng quote token thu được,
-// trường hợp order book không đủ thì trả về false tương đương với không bán được
+// SimulateSell mô phỏng việc bán amount base token qua OrderEdge này.
+// Đối với OrderEdge, thực hiện walk qua bid orders xem có bán được
+// hết amount hay không?
+// Kết quả trả về:
+//   - acquiredQuote: Trả về lượng quote token thu được nếu bán được hết
+//     amount. Trả về 0 order book không đủ depth để fill hết amount.
+//   - isFeasible: true nếu order book không đủ depth để fill hết amount
+//     và ngược lại.
 func (e OrderEdge) SimulateSell(amount float64) (float64, bool) {
 	acquiredQuoteTotal := 0.0
 	for _, order := range e.BidOrders {
@@ -37,9 +43,13 @@ func (e OrderEdge) SimulateSell(amount float64) (float64, bool) {
 	return acquiredQuoteTotal, true
 }
 
-// Mua một lượng `amount` base token, trả về lượng quote token cần thiết,
-// trường hợp order book không đủ lượng base token để mua thì trả về false
-// tương đương với không mua được
+// SimulateBuy mô phỏng việc mua amount base token qua OrderEdge này.
+// Đối với OrderEdge, thực hiện walk qua ask orders để kiểm tra có đủ
+// thanh khoản (liquidity) để mua hết amount hay không.
+// Kết quả trả về:
+//   - requiredQuote: Lượng quote token cần thiết để mua được hết amount base token.
+//     Trả về 0 nếu order book không đủ depth để fill hết amount.
+//   - isFeasible: true nếu order book đủ depth để fill hết amount, false nếu không.
 func (e OrderEdge) SimulateBuy(amount float64) (float64, bool) {
 	requiredQuoteTotal := 0.0
 	for _, order := range e.AskOrders {
@@ -60,6 +70,15 @@ func (e OrderEdge) SimulateBuy(amount float64) (float64, bool) {
 	return requiredQuoteTotal, true
 }
 
+// GetReverseEdge trả về một cạnh OrderEdge đảo ngược chiều giao dịch so với
+// cạnh hiện tại. Các lệnh ask và bid của cạnh đảo ngược được tính toán lại:
+//   - AskOrders mới được tạo từ BidOrders cũ, với giá và khối lượng đảo nghịch:
+//   - Giá mới = 1 / Giá cũ
+//   - Khối lượng mới = Giá cũ * Khối lượng cũ
+//   - BidOrders mới được tạo từ AskOrders cũ, với công thức tương tự.
+//
+// Điều này đảm bảo khi đảo chiều, order book vẫn phản ánh đúng thanh khoản
+// và giá trị chuyển đổi giữa hai token.
 func (e OrderEdge) GetReverseEdge() Edge {
 	reverseEdge := OrderEdge{
 		BaseToken:  e.QuoteToken,
