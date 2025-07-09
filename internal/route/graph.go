@@ -160,7 +160,7 @@ func getPath(prevs map[string]string, base, quote string) []string {
 //   - bool: true nếu tồn tại route khả thi, false nếu không
 func (g graph) BestAskPrice(base, quote string, amount float64) (
 	float64, []string, bool) {
-	minRequired, prev, isFeasible := g.dijkstra(base, quote, amount)
+	minRequired, prev, isFeasible := g.ucs(base, quote, amount)
 	if isFeasible {
 		return minRequired[quote] / amount, getPath(prev, quote, base), true
 	}
@@ -168,9 +168,11 @@ func (g graph) BestAskPrice(base, quote string, amount float64) (
 	return 0, nil, false
 }
 
-// dijkstra là một biến thể của thuật toán Dijkstra dùng để tìm số lượng quote
-// token tối thiểu cần thiết để mua được một lượng amount base token, xuất phát
-// từ đỉnh base và kết thúc ở đỉnh quote.
+// ucs (Uniform Cost Search) là một biến thể của thuật toán Dijkstra dùng để
+// tìm số lượng quote token tối thiểu cần thiết để mua được một lượng amount
+// base token, xuất phát từ đỉnh base và kết thúc ở đỉnh quote. ucs nhanh hơn
+// Dijkstra do nó sử dụng min heap để chọn ra đỉnh có min required ở mỗi lần
+// lặp.
 //
 // Ý tưởng:
 //   - Gán minRequired[base] = amount (lượng base token cần mua ở đỉnh xuất phát),
@@ -188,7 +190,7 @@ func (g graph) BestAskPrice(base, quote string, amount float64) (
 //   - bool: true nếu tìm được route khả thi, false nếu không.
 //
 // Lưu ý: Hàm này chỉ cho kết quả hợp lý khi đồ thị không có arbitrage loop.
-func (g graph) dijkstra(base, quote string, amount float64) (
+func (g graph) ucs(base, quote string, amount float64) (
 	map[string]float64, map[string]string, bool) {
 	// Khởi tạo số token tối đa tối thiểu để mua một lượng amount base token
 	// cho các đỉnh, đỉnh khởi đầu bằng lượng token cần mua, các đỉnh khác
