@@ -12,7 +12,7 @@ import (
 
 func main() {
 	// read input from file, build graph
-	base, quote, graph, err := ReadSimpleInput("test/input.txt")
+	base, quote, graph, err := ReadSimpleInput("test/simple_input.txt")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Lỗi đọc file input.txt: %v\n", err)
 		os.Exit(1)
