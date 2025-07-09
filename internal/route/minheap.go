@@ -6,9 +6,8 @@ type TokenInfo struct {
 }
 
 // Heap (Min Heap dựa trên MinRequired)
+// Sử dụng cho giải thuật Uniform Cost Search
 type TokenMinHeap []TokenInfo
-
-// Các hàm cần thiết để thỏa mãn heap.Interface
 
 func (h TokenMinHeap) Len() int {
 	return len(h)
