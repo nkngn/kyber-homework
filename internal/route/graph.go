@@ -172,7 +172,7 @@ func (g graph) BestAskPrice(base, quote string, amount float64) (
 // tìm số lượng quote token tối thiểu cần thiết để mua được một lượng amount
 // base token, xuất phát từ đỉnh base và kết thúc ở đỉnh quote. ucs nhanh hơn
 // Dijkstra do nó sử dụng min heap để chọn ra đỉnh có min required ở mỗi lần
-// lặp.
+// lặp. Độ phức tạp O(E log(V)).
 //
 // Ý tưởng:
 //   - Gán minRequired[base] = amount (lượng base token cần mua ở đỉnh xuất phát),
