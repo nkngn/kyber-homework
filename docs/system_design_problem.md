@@ -85,6 +85,7 @@ lưu lại update_id `U` của event đầu tiên nhận được. Phần này d
     - Khi apply hết event trong buffer, flush symbol xuống `Cache` với key orderbook:<exchange>:<symbol> dạng JSON, để dùng cho các service khác. Đối với các symbol trade nhiều, có thể chuyển qua chiến lược update sau mỗi 1, 2s.
 
 Cài đặt khuyến nghị:
+
 ![Class diagram order fetcher](images/order_fetcher.drawio.png)
 
 // Nháp:
