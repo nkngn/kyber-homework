@@ -19,21 +19,31 @@ func main() {
 	}
 
 	// find best ask price
-	bestAskPrice, bestAskRoute, isFeasible := graph.BestAskPrice(base, quote, amount)
-	if isFeasible {
+	bestAskPrice, bestAskRoute, err := graph.BestAskPrice(base, quote, amount)
+	if err != nil {
+		switch err {
+		case route.ErrArbitrageLoop:
+			fmt.Printf("Cannot find best ask price %s->%s, arbitrage loop detected.\n", quote, base)
+		case route.ErrNoRoute:
+			fmt.Printf("Cannot find best ask price %s->%s, no route.\n", quote, base)
+		}
+	} else {
 		fmt.Println(strings.Join(bestAskRoute, "->"))
 		fmt.Printf("%.6f\n", bestAskPrice)
-	} else {
-		fmt.Printf("%s->%s ask route is not feasible\n", quote, base)
 	}
 
 	// find best bid price
-	bestBidPrice, bestBidRoute, isFeasible := graph.BestBidPrice(base, quote, amount)
-	if isFeasible {
+	bestBidPrice, bestBidRoute, err := graph.BestBidPrice(base, quote, amount)
+	if err != nil {
+		switch err {
+		case route.ErrArbitrageLoop:
+			fmt.Printf("Cannot find best bid price %s->%s, arbitrage loop detected.\n", quote, base)
+		case route.ErrNoRoute:
+			fmt.Printf("Cannot find best bid price %s->%s, no route.\n", quote, base)
+		}
+	} else {
 		fmt.Println(strings.Join(bestBidRoute, "->"))
 		fmt.Printf("%.6f\n", bestBidPrice)
-	} else {
-		fmt.Printf("%s->%s bid route is not feasible\n", quote, base)
 	}
 }
 

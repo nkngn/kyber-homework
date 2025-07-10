@@ -20,21 +20,31 @@ func main() {
 
 	// Đối với simple problem, lượng base token cần bán/mua luôn là 1 đơn vị
 	// find best ask price
-	bestAskPrice, bestAskRoute, isFeasible := graph.BestAskPrice(base, quote, 1.0)
-	if isFeasible {
+	bestAskPrice, bestAskRoute, err := graph.BestAskPrice(base, quote, 1.0)
+	if err != nil {
+		switch err {
+		case route.ErrArbitrageLoop:
+			fmt.Printf("Cannot find best ask price %s->%s, arbitrage loop detected.\n", quote, base)
+		case route.ErrNoRoute:
+			fmt.Printf("Cannot find best ask price %s->%s, no route.\n", quote, base)
+		}
+	} else {
 		fmt.Println(strings.Join(bestAskRoute, "->"))
 		fmt.Printf("%.6f\n", bestAskPrice)
-	} else {
-		fmt.Printf("%s->%s ask route is not exists\n", quote, base)
 	}
 
 	// find best bid price
-	bestBidPrice, bestBidRoute, isFeasible := graph.BestBidPrice(base, quote, 1.0)
-	if isFeasible {
+	bestBidPrice, bestBidRoute, err := graph.BestBidPrice(base, quote, 1.0)
+	if err != nil {
+		switch err {
+		case route.ErrArbitrageLoop:
+			fmt.Printf("Cannot find best bid price %s->%s, arbitrage loop detected.\n", quote, base)
+		case route.ErrNoRoute:
+			fmt.Printf("Cannot find best bid price %s->%s, no route.\n", quote, base)
+		}
+	} else {
 		fmt.Println(strings.Join(bestBidRoute, "->"))
 		fmt.Printf("%.6f\n", bestBidPrice)
-	} else {
-		fmt.Printf("%s->%s bid route is not exists\n", base, quote)
 	}
 }
 

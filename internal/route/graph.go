@@ -2,15 +2,21 @@ package route
 
 import (
 	"container/heap"
+	"errors"
 	"math"
 	"slices"
+)
+
+var (
+	ErrNoRoute       = errors.New("no feasible route found")
+	ErrArbitrageLoop = errors.New("arbitrage loop detected")
 )
 
 type Graph interface {
 	AddEdge(e Edge)
 	Neighbors(token string) []Edge
-	BestBidPrice(base, quote string, amount float64) (float64, []string, bool)
-	BestAskPrice(base, quote string, amount float64) (float64, []string, bool)
+	BestBidPrice(base, quote string, amount float64) (float64, []string, error)
+	BestAskPrice(base, quote string, amount float64) (float64, []string, error)
 }
 
 type graph struct {
@@ -49,15 +55,74 @@ func (g graph) Neighbors(token string) []Edge {
 // Kết quả trả về:
 //   - float64: tỷ lệ quote/base tốt nhất (maxAcquired[quote] / amount)
 //   - []string: đường đi (route) từ base đến quote
-//   - bool: true nếu tồn tại route khả thi, false nếu không
+//   - err: trường hợp không tìm được đường đi hoặc xuất hiện arbitrage loop
 func (g *graph) BestBidPrice(base, quote string, amount float64) (
-	float64, []string, bool) {
-	maxAcquired, prevs, isFeasible := g.propagateBellmanFord(base, quote, amount)
-	if isFeasible {
-		return maxAcquired[quote] / amount, getPath(prevs, base, quote), true
+	float64, []string, error) {
+	maxAcquired, prevs, err := g.propagateBellmanFord(base, quote, amount)
+	if err != nil {
+		return 0, nil, err
 	}
 
-	return 0, nil, false
+	return maxAcquired[quote] / amount, getPath(prevs, base, quote), nil
+}
+
+// BestAskPrice tìm giá mua tốt nhất (tối thiểu hóa lượng quote token cần thiết)
+// để mua amount base token, xuất phát từ token base và kết thúc ở token quote.
+//
+// Kết quả trả về:
+//   - float64: tỷ lệ quote/base tốt nhất (minRequired[quote] / amount)
+//   - []string: đường đi (route) từ base đến quote
+//   - err: trường hợp không tìm được đường đi hoặc xuất hiện arbitrage loop
+func (g graph) BestAskPrice(base, quote string, amount float64) (
+	float64, []string, error) {
+	minRequired, prevs, err := g.bellmanFord(base, quote, amount)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	path := getPath(prevs, base, quote)
+	slices.Reverse(path)
+	return minRequired[quote] / amount, path, nil
+
+	// minRequired, prev, isFeasible := g.ucs(base, quote, amount)
+	// if isFeasible {
+	// 	path := getPath(prev, base, quote)
+	// 	slices.Reverse(path)
+	// 	return minRequired[quote] / amount, path, nil
+	// }
+
+	// return 0, nil, ErrNoRoute
+}
+
+// getPath sử dụng để trả về danh sách token trên đường đi từ base đến quote,
+// có thể là ask route hoặc bid route. Hàm này truy vết ngược từ quote về
+// base theo prevs, sau đó đảo ngược kết quả để trả về đúng thứ tự từ base
+// đến quote.
+// Tham số:
+//   - prevs: map để truy vết đường đi tối ưu (key là đỉnh, value là đỉnh liền
+//     trước)
+//
+// Kết quả trả về:
+//   - path: slice lưu danh sách token trên đường đi từ base đến quote, bao
+//     gồm cả base lẫn quote
+func getPath(prevs map[string]string, base, quote string) []string {
+	path := []string{}
+	path = append(path, quote)
+	current, ok := prevs[quote]
+	for {
+		if !ok {
+			break
+		}
+		path = append(path, current)
+
+		if current == base {
+			break
+		}
+		current, ok = prevs[current]
+	}
+	slices.Reverse(path)
+	return path
+	// return strings.Join(path, "->")
 }
 
 // propagateBellmanFord là một biến thể của thuật toán Bellman-Ford dùng để
@@ -71,8 +136,19 @@ func (g *graph) BestBidPrice(base, quote string, amount float64) (
 //     tại đỉnh đó
 //   - prevs: map để truy vết đường đi tối ưu (key là đỉnh, value là đỉnh liền
 //     trước)
+//   - err: trường hợp không tìm được đường đi hoặc xuất hiện arbitrage loop
 func (g *graph) propagateBellmanFord(base, quote string, amount float64) (
-	map[string]float64, map[string]string, bool) {
+	map[string]float64, map[string]string, error) {
+	_, ok := g.edges[base]
+	if !ok {
+		return nil, nil, ErrNoRoute
+	}
+
+	_, ok = g.edges[quote]
+	if !ok {
+		return nil, nil, ErrNoRoute
+	}
+
 	// Khởi tạo số token tối đa có thể thu được cho các đỉnh, đỉnh khởi đầu
 	// bằng lượng token cần bán, các đỉnh khác bằng 0
 	maxAcquired := make(map[string]float64, len(g.edges))
@@ -113,59 +189,140 @@ func (g *graph) propagateBellmanFord(base, quote string, amount float64) (
 		}
 	}
 
+	// Lặp qua tất cả các cạnh một lần nữa để kiểm tra arbitrage loop
+	for baseToken, edges := range g.edges {
+		if maxAcquired[baseToken] == 0 {
+			continue
+		}
+
+		// Đối với mỗi cạnh, thực hiện bán thử xem có được không?
+		// Nếu được thì thu về bao nhiêu quote token?
+		for _, edge := range edges {
+			acquiredQuote, isFeasible := edge.SimulateSell(
+				maxAcquired[baseToken],
+			)
+
+			// Order book does not have enough depth to fill
+			if !isFeasible {
+				continue
+			}
+
+			// Lượng token vẫn tăng, arbitrage loop tồn tại
+			if acquiredQuote > maxAcquired[edge.To()] {
+				return nil, nil, ErrArbitrageLoop
+			}
+		}
+	}
+
 	if maxAcquired[quote] == 0.0 {
-		return nil, nil, false
+		return nil, nil, ErrNoRoute
 	}
 
-	return maxAcquired, prevs, true
+	return maxAcquired, prevs, nil
 }
 
-// getPath sử dụng để trả về danh sách token trên đường đi từ base đến quote,
-// có thể là ask route hoặc bid route. Hàm này truy vết ngược từ quote về
-// base theo prevs, sau đó đảo ngược kết quả để trả về đúng thứ tự từ base
-// đến quote.
-// Tham số:
-//   - prevs: map để truy vết đường đi tối ưu (key là đỉnh, value là đỉnh liền
-//     trước)
+// bellmanFord là một biến thể của thuật toán Bellman-Ford dùng để tìm số lượng
+// quote token tối thiểu cần thiết để mua được một lượng amount base token, xuất
+// phát từ đỉnh base và kết thúc ở đỉnh quote.
+//
+// Ý tưởng:
+//   - Gán minRequired[base] = amount (lượng base token cần mua ở đỉnh xuất phát),
+//     các đỉnh còn lại là +Inf.
+//   - Lặp n-1 lần (với n là số đỉnh), mỗi lần thử mua base token qua các cạnh
+//     (SimulateBuy), cập nhật minRequired nếu tìm được giá trị nhỏ hơn.
+//   - Sau n-1 lần, lặp thêm 1 lần để kiểm tra arbitrage loop: nếu còn cập nhật
+//     được minRequired thì tồn tại chu trình lợi nhuận vô hạn.
 //
 // Kết quả trả về:
-//   - path: slice lưu danh sách token trên đường đi từ base đến quote, bao
-//     gồm cả base lẫn quote
-func getPath(prevs map[string]string, base, quote string) []string {
-	path := []string{}
-	path = append(path, quote)
-	current, ok := prevs[quote]
-	for {
-		if !ok {
-			break
-		}
-		path = append(path, current)
-
-		if current == base {
-			break
-		}
-		current, ok = prevs[current]
-	}
-	slices.Reverse(path)
-	return path
-	// return strings.Join(path, "->")
-}
-
-// BestAskPrice tìm giá mua tốt nhất (tối thiểu hóa lượng quote token cần thiết)
-// để mua amount base token, xuất phát từ token base và kết thúc ở token quote.
+//   - minRequired: map từ tên token đến số lượng quote token tối thiểu cần thiết
+//     để mua được amount base token tại đỉnh đó.
+//   - prevs: map để truy vết đường đi tối ưu (key là đỉnh, value là đỉnh liền trước).
+//   - err: trả về ErrNoRoute nếu không tìm được đường đi, ErrArbitrageLoop nếu phát hiện chu trình lợi nhuận.
 //
-// Kết quả trả về:
-//   - float64: tỷ lệ quote/base tốt nhất (minRequired[quote] / amount)
-//   - []string: đường đi (route) từ base đến quote
-//   - bool: true nếu tồn tại route khả thi, false nếu không
-func (g graph) BestAskPrice(base, quote string, amount float64) (
-	float64, []string, bool) {
-	minRequired, prev, isFeasible := g.ucs(base, quote, amount)
-	if isFeasible {
-		return minRequired[quote] / amount, getPath(prev, quote, base), true
+// Lưu ý: Hàm này chỉ cho kết quả hợp lý khi đồ thị không có arbitrage loop.
+func (g *graph) bellmanFord(base, quote string, amount float64) (
+	map[string]float64, map[string]string, error) {
+	_, ok := g.edges[base]
+	if !ok {
+		return nil, nil, ErrNoRoute
 	}
 
-	return 0, nil, false
+	_, ok = g.edges[quote]
+	if !ok {
+		return nil, nil, ErrNoRoute
+	}
+
+	// Khởi tạo số token tối đa tối thiểu để mua một lượng amount base token
+	// cho các đỉnh, đỉnh khởi đầu bằng lượng token cần mua, các đỉnh khác
+	// bằng 0
+	minRequired := map[string]float64{}
+	for base := range g.edges {
+		minRequired[base] = math.Inf(1)
+	}
+	minRequired[base] = amount
+
+	// prevs là một map có key là đỉnh, value là đỉnh liền trước của nó
+	// Dùng để xây dựng route sau này
+	prevs := make(map[string]string, len(g.edges))
+
+	// Lặp n-1 lần theo tư tưởng Bellman-Ford, với n là số đỉnh
+	for range len(g.edges) - 1 {
+		for baseToken, edges := range g.edges {
+			if math.IsInf(minRequired[baseToken], 1) {
+				continue
+			}
+
+			// Đối với mỗi cạnh, thực hiện mua thử xem có được không?
+			// Nếu được thì cần bao nhiêu quote token?
+			for _, edge := range edges {
+				quoteRequired, isFeasible := edge.SimulateBuy(
+					minRequired[baseToken],
+				)
+
+				// Order book does not have enough depth to fill
+				if !isFeasible {
+					continue
+				}
+
+				// Cập nhật của đỉnh quote cần ít token hơn
+				if quoteRequired < minRequired[edge.To()] {
+					minRequired[edge.To()] = quoteRequired
+					prevs[edge.To()] = edge.From()
+				}
+			}
+		}
+	}
+
+	// Lặp qua tất cả các cạnh một lần nữa để kiểm tra arbitrage loop
+	for baseToken, edges := range g.edges {
+		if math.IsInf(minRequired[baseToken], 1) {
+			continue
+		}
+
+		// Đối với mỗi cạnh, thực hiện mua thử xem có được không?
+		// Nếu được thì cần bao nhiêu quote token?
+		for _, edge := range edges {
+			quoteRequired, isFeasible := edge.SimulateBuy(
+				minRequired[baseToken],
+			)
+
+			// Order book does not have enough depth to fill
+			if !isFeasible {
+				continue
+			}
+
+			// Lượng token vẫn tăng, arbitrage loop tồn tại
+			if quoteRequired < minRequired[edge.To()] {
+				return nil, nil, ErrArbitrageLoop
+			}
+		}
+	}
+
+	if math.IsInf(minRequired[quote], 1) {
+		return nil, nil, ErrNoRoute
+	}
+
+	return minRequired, prevs, nil
 }
 
 // ucs (Uniform Cost Search) là một biến thể của thuật toán Dijkstra dùng để
@@ -187,11 +344,21 @@ func (g graph) BestAskPrice(base, quote string, amount float64) (
 //   - minRequired: map từ tên token đến số lượng quote token tối thiểu cần thiết
 //     để mua được amount base token tại đỉnh đó.
 //   - prevs: map để truy vết đường đi tối ưu (key là đỉnh, value là đỉnh liền trước).
-//   - bool: true nếu tìm được route khả thi, false nếu không.
+//   - err: nếu không tìm được route khả thi.
 //
 // Lưu ý: Hàm này chỉ cho kết quả hợp lý khi đồ thị không có arbitrage loop.
 func (g graph) ucs(base, quote string, amount float64) (
-	map[string]float64, map[string]string, bool) {
+	map[string]float64, map[string]string, error) {
+	_, ok := g.edges[base]
+	if !ok {
+		return nil, nil, ErrNoRoute
+	}
+
+	_, ok = g.edges[quote]
+	if !ok {
+		return nil, nil, ErrNoRoute
+	}
+
 	// Khởi tạo số token tối đa tối thiểu để mua một lượng amount base token
 	// cho các đỉnh, đỉnh khởi đầu bằng lượng token cần mua, các đỉnh khác
 	// bằng 0
@@ -238,14 +405,14 @@ func (g graph) ucs(base, quote string, amount float64) (
 				minHeap.Push(TokenInfo{
 					Token: edge.To(), MinRequired: minRequired[edge.To()],
 				})
-				prevs[edge.From()] = edge.To()
+				prevs[edge.To()] = edge.From()
 			}
 		}
 	}
 
 	if !visited[quote] {
-		return nil, nil, false // không có route khả thi
+		return nil, nil, ErrNoRoute // không có route khả thi
 	}
 
-	return minRequired, prevs, true
+	return minRequired, prevs, nil
 }
