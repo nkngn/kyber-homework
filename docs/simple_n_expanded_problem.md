@@ -82,9 +82,10 @@ bản chất, simple problem là expanded problem với lượng token cần mua
 và các cạnh có thanh khoản vô hạn, nghĩa là luôn có thể đi qua.
 
 Để sử dụng chỉ cần khởi tạo Graph bằng hàm `NewGraph` hoặc `NewGraphWithEdges`
-và gọi các hàm `BestBidPrice` và `BestAskPrice` để tính toán.
+và gọi các hàm `BestBidPrice` và `BestAskPrice` để tính toán. Các hàm này trả 
+về lỗi khi không tìm được trade route hoặc xuất hiện arbitrage loop.
 
-![Class diagram](images/class_diagram.png)
+![Class diagram](images/expanded_class_diagram.drawio.png)
 
 ## Cài đặt
 ## Cải tiến
