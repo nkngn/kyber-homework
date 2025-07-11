@@ -91,4 +91,3 @@ về lỗi khi không tìm được trade route hoặc xuất hiện arbitrage l
 ## Cải tiến
 1. Cài đặt nhiều thuật toán tìm đường khác để chạy song song khi tìm best 
 bid/ask price, và dùng Done Channel Pattern để kết thúc cạnh tranh.
-2. Xử lý vòng lặp lợi nhuận vô hạn nếu thực tế có thể xảy ra.
