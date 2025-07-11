@@ -189,6 +189,12 @@ func (g *graph) propagateBellmanFord(base, quote string, amount float64) (
 		}
 	}
 
+	// Kiểm tra đỉnh nguồn có bị cập nhật không, do thuật toán khởi đầu
+	// từ một lượng amount thay vì 0
+	if maxAcquired[base] > amount {
+		return nil, nil, ErrArbitrageLoop
+	}
+
 	// Lặp qua tất cả các cạnh một lần nữa để kiểm tra arbitrage loop
 	for baseToken, edges := range g.edges {
 		if maxAcquired[baseToken] == 0 {
